@@ -34,6 +34,7 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
   const openBoxModal = useCanvasStore((s) => s.openBoxModal)
   const openGardensReportModal = useCanvasStore((s) => s.openGardensReportModal)
   const openGardensReportOverlayModal = useCanvasStore((s) => s.openGardensReportOverlayModal)
+  const openMilestoneViewerModal = useCanvasStore((s) => s.openMilestoneViewerModal)
 
   // Helper function to check if a box is a gardens-report box
   const isGardensReportBox = (boxId: string, item: any): boolean => {
@@ -62,6 +63,42 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
     const parentBoxId = boxId.split('_overlay_')[0]
     // Check if parent ID starts with gardens-report prefix
     return parentBoxId.startsWith('gardens-report_') || parentBoxId.startsWith('gardens-report-')
+  }
+
+  // Helper function to check if a box is a karma-serpentine main box
+  const isKarmaSerpentineBox = (boxId: string, item: any): boolean => {
+    if (!boxId || typeof boxId !== 'string') {
+      return false
+    }
+    // Check by ID prefix
+    if (boxId.startsWith('karma-serpentine')) {
+      return !boxId.includes('_overlay_')
+    }
+    // Check by image source path
+    if (item?.contentType === 'image' && item?.imageSrc && typeof item.imageSrc === 'string') {
+      return item.imageSrc.includes('/karma-serpentine/')
+    }
+    // Check by karmaSerpentineBlockId field
+    if (item?.karmaSerpentineBlockId) {
+      return true
+    }
+    return false
+  }
+
+  // Helper function to check if a box is a karma-serpentine milestone overlay box
+  const isKarmaSerpentineMilestoneOverlay = (boxId: string, item: any): boolean => {
+    if (!boxId || typeof boxId !== 'string') {
+      return false
+    }
+    // Milestone overlays have contentType 'milestone' and belong to karma-serpentine
+    if (item?.contentType === 'milestone') {
+      return true
+    }
+    // Also check by overlay ID pattern
+    if (boxId.includes('_overlay_') && boxId.startsWith('karma-serpentine')) {
+      return true
+    }
+    return false
   }
 
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -164,9 +201,11 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
       {(isAuthorized || presentation) && overlay.map((it) => {
         const isGardensReport = isGardensReportBox(it.id, it)
         const isOverlay = isGardensReportOverlayBox(it.id, it)
-        // Disable resize/drag for gardens-report boxes (both PNG and overlays)
-        const disableDrag = presentation || !isAuthorized || isGardensReport
-        const disableResize = presentation || !isAuthorized || isGardensReport
+        const isKarmaSerpentine = isKarmaSerpentineBox(it.id, it)
+        const isMilestoneOverlay = isKarmaSerpentineMilestoneOverlay(it.id, it)
+        // Disable resize/drag for gardens-report boxes and karma-serpentine boxes
+        const disableDrag = presentation || !isAuthorized || isGardensReport || isKarmaSerpentine || isMilestoneOverlay
+        const disableResize = presentation || !isAuthorized || isGardensReport || isKarmaSerpentine || isMilestoneOverlay
         
         return (
         <Rnd
@@ -210,6 +249,21 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
           onClick={(e: React.MouseEvent) => {
             // Skip handling clicks for snapshot boxes - they have their own overlay
             if (it.contentType === 'snapshot' && presentation && (it as any)?.clickable) {
+              return
+            }
+            
+            // In presentation mode, handle karma-serpentine milestone overlays
+            if (presentation && isKarmaSerpentineMilestoneOverlay(it.id, it) && (it as any)?.clickable) {
+              e.stopPropagation()
+              // Open MilestoneViewer modal with the milestone data
+              const milestoneData = {
+                newsroomProjectId: (it as any).newsroomProjectId,
+                newsroomFolderId: (it as any).newsroomFolderId,
+                sourceBlockId: (it as any).sourceBlockId,
+                summaryText: (it as any).summaryText, // Use summaryText for reverse lookup
+                charactersInCard: (it as any).charactersInCard, // Character count for precise matching
+              }
+              openMilestoneViewerModal(milestoneData)
               return
             }
             
