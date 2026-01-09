@@ -11,7 +11,9 @@ import LayersModal from '@/app/interoperable-canvas/components/LayersModal'
 import BoxContentModal from '@/app/interoperable-canvas/components/BoxContentModal'
 import GardensReportModal from '@/app/interoperable-canvas/components/GardensReportModal'
 import GardensReportOverlayModal from '@/app/interoperable-canvas/components/GardensReportOverlayModal'
+import MilestoneViewerModal from '@/app/interoperable-canvas/components/MilestoneViewerModal'
 import ConnectWalletButton from './ConnectWalletButton'
+import { useRouter, usePathname } from 'next/navigation'
 
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore, doc, onSnapshot, setDoc, collection, getDocs, getDoc } from 'firebase/firestore'
@@ -35,11 +37,14 @@ const db = getFirestore(app)
 const storage = getStorage(app)
 
 export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, canvasId = 'root' }: Props) {
+  const router = useRouter()
+  const pathname = usePathname()
   const [scope, setScope] = useState<CanvasScope>(initialScope)
   const [childIds, setChildIds] = useState<string[]>([])
   const [isPresentation, setIsPresentation] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const isPresentationRef = useRef(false)
+  const isInitialMountRef = useRef(true)
   
   // Check if presentation mode and fullscreen mode are enabled via URL parameter (client-side only)
   useEffect(() => {
@@ -51,6 +56,34 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
       setIsFullscreen(urlParams.get('fullscreen') === 'true')
     }
   }, [])
+
+  // Sync scope changes to URL (but not on initial mount to avoid conflicts with page.tsx)
+  useEffect(() => {
+    if (isInitialMountRef.current) {
+      isInitialMountRef.current = false
+      return
+    }
+
+    if (!projectId || typeof window === 'undefined') return
+
+    const urlParams = new URLSearchParams(window.location.search)
+    
+    // Update childId param based on scope
+    if (scope.type === 'child') {
+      urlParams.set('childId', scope.childId)
+    } else {
+      urlParams.delete('childId')
+    }
+
+    // Preserve other params (projectId, presentation, fullscreen, etc.)
+    if (!urlParams.has('projectId')) {
+      urlParams.set('projectId', projectId)
+    }
+
+    // Update URL without causing page reload
+    const newUrl = `${pathname}?${urlParams.toString()}`
+    router.replace(newUrl, { scroll: false })
+  }, [scope, projectId, pathname, router])
 
   const aspect = useCanvasStore((s: any) => s.aspect)
   const setAspect = useCanvasStore((s: any) => s.setAspect)
@@ -325,15 +358,50 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
               <label className="block text-sm font-medium text-gray-300">Canvas Scope</label>
               <select
                 value={scope.type === 'root' ? 'root' : `child:${scope.childId}`}
-                onChange={(e) => {
+                onChange={async (e) => {
                   const v = e.target.value
-                  if (v === 'root') setScope({ type: 'root' })
-                  else if (v.startsWith('child:')) setScope({ type: 'child', childId: v.split(':')[1] || 'mini-app-test' })
+                  if (v === 'root') {
+                    setScope({ type: 'root' })
+                  } else if (v === 'create-child') {
+                    // Handle create child action
+                    if (!projectId || !canEdit) return
+                    const childId = prompt('New child canvas id (e.g., mini-app-test-2)')?.trim()
+                    if (!childId) {
+                      // Reset select to current scope if cancelled
+                      e.target.value = scope.type === 'root' ? 'root' : `child:${scope.childId}`
+                      return
+                    }
+                    // Create child metadata doc and root canvas doc
+                    const childMetaPath = ['interoperable-canvas', projectId, 'child-canvases', childId].join('/')
+                    await setDoc(doc(db, childMetaPath), { createdAt: Date.now() }, { merge: true })
+                    const path = ['interoperable-canvas', projectId, 'child-canvases', childId, 'canvases', 'root'].join('/')
+                    // Always use 'landing-page' (Desktop Landing) as default aspect ratio for new child canvases
+                    await setDoc(doc(db, path), { aspect: 'landing-page', createdAt: Date.now() }, { merge: true })
+                    // Create storage folders by uploading a placeholder file under images/
+                    try {
+                      const keepPath = `interoperable-canvas/assets/${projectId}/child-canvases/${childId}/images/.keep`
+                      const bytes = new Blob(['placeholder'], { type: 'text/plain' })
+                      await uploadBytes(storageRef(storage, keepPath), bytes, { cacheControl: 'no-store' })
+                    } catch {}
+                    const newScope = { type: 'child' as const, childId }
+                    setScope(newScope)
+                    // refresh list
+                    try {
+                      const col = collection(db, ['interoperable-canvas', projectId, 'child-canvases'].join('/'))
+                      const snap = await getDocs(col)
+                      const ids: string[] = []
+                      snap.forEach((d) => ids.push(d.id))
+                      setChildIds(ids.sort())
+                    } catch {}
+                  } else if (v.startsWith('child:')) {
+                    setScope({ type: 'child', childId: v.split(':')[1] || 'mini-app-test' })
+                  }
                 }}
                 className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600"
                 disabled={!canEdit}
               >
                 <option value="root">Root</option>
+                <option value="create-child" style={{ fontWeight: 'bold', color: '#6b21a8' }}>++ Add Child ++</option>
                 {childIds.map((id) => (
                   <option key={id} value={`child:${id}`}>Child: {id}</option>
                 ))}
@@ -345,7 +413,7 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
               onClick={() => {
                 if (!projectId) return
                 // Build URL using slug system: /{projectId}/?childId={childId}&presentation=true&fullscreen=true
-                const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
+                const baseUrl = 'https://infinite-fountain.web.app'
                 const url = new URL(`/${projectId}`, baseUrl)
                 // Get childId from scope or URL params and set it first
                 const currentChildId = scope.type === 'child' ? scope.childId : (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('childId') : null)
@@ -360,43 +428,11 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
             >
               View Site
             </button>
-            {/* Create child canvas */}
-            <button
-              className="w-full px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={async () => {
-                if (!projectId || !canEdit) return
-                const childId = prompt('New child canvas id (e.g., mini-app-test-2)')?.trim()
-                if (!childId) return
-                // Create child metadata doc and root canvas doc
-                const childMetaPath = ['interoperable-canvas', projectId, 'child-canvases', childId].join('/')
-                await setDoc(doc(db, childMetaPath), { createdAt: Date.now() }, { merge: true })
-                const path = ['interoperable-canvas', projectId, 'child-canvases', childId, 'canvases', 'root'].join('/')
-                await setDoc(doc(db, path), { aspect: aspect ?? '1:1', createdAt: Date.now() }, { merge: true })
-                // Create storage folders by uploading a placeholder file under images/
-                try {
-                  const keepPath = `interoperable-canvas/assets/${projectId}/child-canvases/${childId}/images/.keep`
-                  const bytes = new Blob(['placeholder'], { type: 'text/plain' })
-                  await uploadBytes(storageRef(storage, keepPath), bytes, { cacheControl: 'no-store' })
-                } catch {}
-                setScope({ type: 'child', childId })
-                // refresh list
-                try {
-                  const col = collection(db, ['interoperable-canvas', projectId, 'child-canvases'].join('/'))
-                  const snap = await getDocs(col)
-                  const ids: string[] = []
-                  snap.forEach((d) => ids.push(d.id))
-                  setChildIds(ids.sort())
-                } catch {}
-              }}
-              disabled={!canEdit}
-            >
-              New Child Canvas
-            </button>
           </div>
         </div>
       )}
       {/* Canvas area - centered in presentation mode */}
-      <div className={`overflow-hidden ${isPresentation ? 'w-full flex justify-center' : 'flex-1 ml-48'}`}>
+      <div className={`${isPresentation ? 'w-full h-screen flex justify-center overflow-y-auto' : 'flex-1 ml-48 overflow-hidden'}`}>
         <Canvas 
           aspect={aspect} 
           backgroundColor={bgStyle} 
@@ -433,6 +469,7 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
       {/* @ts-ignore add scope prop */}
       <GardensReportModal projectId={projectId ?? 'demo'} canvasId={canvasId} scope={scope} />
       <GardensReportOverlayModal />
+      <MilestoneViewerModal />
     </div>
   )
 }
