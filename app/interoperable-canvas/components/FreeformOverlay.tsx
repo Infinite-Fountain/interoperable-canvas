@@ -35,6 +35,7 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
   const openGardensReportModal = useCanvasStore((s) => s.openGardensReportModal)
   const openGardensReportOverlayModal = useCanvasStore((s) => s.openGardensReportOverlayModal)
   const openMilestoneViewerModal = useCanvasStore((s) => s.openMilestoneViewerModal)
+  const openMilestoneViewerWithAttestationsModal = useCanvasStore((s) => s.openMilestoneViewerWithAttestationsModal)
 
   // Helper function to check if a box is a gardens-report box
   const isGardensReportBox = (boxId: string, item: any): boolean => {
@@ -264,6 +265,20 @@ export function FreeformOverlay({ projectId = 'demo', canvasId = 'root', scope =
                 charactersInCard: (it as any).charactersInCard, // Character count for precise matching
               }
               openMilestoneViewerModal(milestoneData)
+              return
+            }
+            
+            // In presentation mode, handle attestations milestone badge with viewer
+            if (presentation && it.contentType === 'attestations' && (it as any).attestationType === 'milestone outcomes badge' && (it as any).showViewer !== false && (it as any).selectedMilestone) {
+              e.stopPropagation()
+              openMilestoneViewerWithAttestationsModal({
+                newsroomProjectId: (it as any).newsroomProjectId,
+                newsroomFolderId: (it as any).newsroomFolderId,
+                newsroomSnapshotId: (it as any).newsroomSnapshotId,
+                officialDate: (it as any).selectedMilestone.officialDate,
+                summary: (it as any).selectedMilestone.summary,
+                imageUrl: (it as any).milestoneImage,
+              })
               return
             }
             
