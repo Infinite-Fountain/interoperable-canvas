@@ -12,6 +12,7 @@ import BoxContentModal from '@/app/interoperable-canvas/components/BoxContentMod
 import GardensReportModal from '@/app/interoperable-canvas/components/GardensReportModal'
 import GardensReportOverlayModal from '@/app/interoperable-canvas/components/GardensReportOverlayModal'
 import MilestoneViewerModal from '@/app/interoperable-canvas/components/MilestoneViewerModal'
+import { MilestoneViewerWithAttestationsModal } from '@/app/interoperable-canvas/components/MilestoneViewerWithAttestationsModal'
 import ConnectWalletButton from './ConnectWalletButton'
 import { useRouter, usePathname } from 'next/navigation'
 
@@ -470,6 +471,7 @@ export function CanvasApp({ projectId, scope: initialScope = { type: 'root' }, c
       <GardensReportModal projectId={projectId ?? 'demo'} canvasId={canvasId} scope={scope} />
       <GardensReportOverlayModal />
       <MilestoneViewerModal />
+      <MilestoneViewerWithAttestationsModal />
     </div>
   )
 }

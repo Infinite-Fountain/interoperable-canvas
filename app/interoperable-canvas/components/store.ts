@@ -10,7 +10,26 @@ export type GridItem = {
   type: 'chart' | 'image' | 'text' | 'snapshot'
 }
 
-export type OverlayContentType = 'none' | 'text' | 'image' | 'chart' | 'animation' | 'dune' | 'kanban' | 'snapshot'
+export type OverlayContentType = 'none' | 'text' | 'image' | 'chart' | 'animation' | 'dune' | 'kanban' | 'snapshot' | 'milestone' | 'attestations'
+
+// Milestone data for MilestoneViewer modal
+export type MilestoneViewerData = {
+  newsroomProjectId: string
+  newsroomFolderId: string
+  sourceBlockId: string
+  summaryText: string // Summary text used for reverse lookup (first N characters as displayed in card)
+  charactersInCard?: number // Character count used for truncation (for precise matching)
+} | null
+
+// Milestone data for MilestoneViewerWithAttestations modal
+export type MilestoneViewerWithAttestationsData = {
+  newsroomProjectId: string
+  newsroomFolderId: string
+  newsroomSnapshotId: string
+  officialDate: string
+  summary: string
+  imageUrl?: string | null
+} | null
 
 export type OverlayItem = {
   id: string
@@ -48,7 +67,9 @@ export type CanvasState = {
   overlay: OverlayItem[]
   setOverlay: (items: OverlayItem[]) => void
   layers: Layer[]
-  ui: { showBackgroundModal: boolean; showLayersModal: boolean; showBoxModal: boolean; showGardensReportModal: boolean; showGardensReportOverlayModal: boolean; currentTool: 'none' | 'add-box' }
+  ui: { showBackgroundModal: boolean; showLayersModal: boolean; showBoxModal: boolean; showGardensReportModal: boolean; showGardensReportOverlayModal: boolean; showMilestoneViewerModal: boolean; showMilestoneViewerWithAttestationsModal: boolean; currentTool: 'none' | 'add-box' }
+  milestoneViewerData: MilestoneViewerData
+  milestoneViewerWithAttestationsData: MilestoneViewerWithAttestationsData
   selectedId: string | null
   addItem: (item: GridItem) => void
   updateItem: (id: string, partial: Partial<GridItem>) => void
@@ -71,6 +92,10 @@ export type CanvasState = {
   closeGardensReportModal: () => void
   openGardensReportOverlayModal: (id: string) => void
   closeGardensReportOverlayModal: () => void
+  openMilestoneViewerModal: (data: MilestoneViewerData) => void
+  closeMilestoneViewerModal: () => void
+  openMilestoneViewerWithAttestationsModal: (data: MilestoneViewerWithAttestationsData) => void
+  closeMilestoneViewerWithAttestationsModal: () => void
   createBox: (rect: { x: number; y: number; w: number; h: number; contentType?: OverlayContentType; id?: string; name?: string }) => string
 }
 
@@ -84,7 +109,9 @@ export const useCanvasStore = create<CanvasState>()(
     overlay: [],
     setOverlay: (items) => set((s) => { s.overlay = items }),
     layers: [{ id: 'background', name: 'Background', z: 0 }],
-    ui: { showBackgroundModal: false, showLayersModal: false, showBoxModal: false, showGardensReportModal: false, showGardensReportOverlayModal: false, currentTool: 'none' },
+    ui: { showBackgroundModal: false, showLayersModal: false, showBoxModal: false, showGardensReportModal: false, showGardensReportOverlayModal: false, showMilestoneViewerModal: false, showMilestoneViewerWithAttestationsModal: false, currentTool: 'none' },
+    milestoneViewerData: null,
+    milestoneViewerWithAttestationsData: null,
     selectedId: null,
     addItem: (item) => set((s) => { s.items.push(item) }),
     updateItem: (id, partial) => set((s) => {
@@ -133,6 +160,10 @@ export const useCanvasStore = create<CanvasState>()(
     closeGardensReportModal: () => set((s) => { s.ui.showGardensReportModal = false }),
     openGardensReportOverlayModal: (id) => set((s) => { s.selectedId = id; s.ui.showGardensReportOverlayModal = true }),
     closeGardensReportOverlayModal: () => set((s) => { s.ui.showGardensReportOverlayModal = false }),
+    openMilestoneViewerModal: (data) => set((s) => { s.milestoneViewerData = data; s.ui.showMilestoneViewerModal = true }),
+    closeMilestoneViewerModal: () => set((s) => { s.milestoneViewerData = null; s.ui.showMilestoneViewerModal = false }),
+    openMilestoneViewerWithAttestationsModal: (data) => set((s) => { s.milestoneViewerWithAttestationsData = data; s.ui.showMilestoneViewerWithAttestationsModal = true }),
+    closeMilestoneViewerWithAttestationsModal: () => set((s) => { s.milestoneViewerWithAttestationsData = null; s.ui.showMilestoneViewerWithAttestationsModal = false }),
     createBox: (rect) => {
       let newId = rect.id
       if (!newId) {
